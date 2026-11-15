@@ -1,0 +1,796 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Suivi des absences</title>
+<style>
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { font-family: system-ui, sans-serif; margin: 0; background: #f4f6f8; color: #1f2933; }
+  header { background: #1f4e79; color: #fff; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  header button { background: #2f6ba3; padding: 6px 12px; }
+  header button.actif { background: #fff; color: #1f4e79; }
+  nav { display: flex; gap: 6px; flex-wrap: wrap; }
+  main { max-width: 1000px; margin: 20px auto; padding: 0 12px; }
+  .card { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  #login { max-width: 360px; margin: 80px auto; }
+  h2 { margin-top: 0; font-size: 1.1rem; }
+  h3 { font-size: 1rem; margin: 20px 0 8px; }
+  label { display: block; margin: 8px 0 4px; font-size: .9rem; }
+  input, select, textarea, button { font: inherit; padding: 8px; border: 1px solid #c3cbd3; border-radius: 6px; }
+  input, select, textarea { width: 100%; }
+  button { background: #1f4e79; color: #fff; border: 0; cursor: pointer; }
+  button.secondaire { background: #e4e9ee; color: #1f2933; }
+  button.danger { background: #b83232; }
+  .ligne { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  .ligne > div { flex: 1; min-width: 140px; }
+  table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e4e9ee; }
+  td select { width: auto; max-width: 190px; padding: 4px; }
+  .badge { padding: 2px 8px; border-radius: 10px; font-size: .8rem; }
+  .oui { background: #d4f0dc; } .non { background: #fde1d3; }
+  .erreur { color: #b83232; } .info { color: #1d7a3a; }
+  .scroll { overflow-x: auto; }
+  .barre { background: #e4e9ee; border-radius: 4px; height: 10px; min-width: 80px; }
+  .barre span { display: block; height: 100%; background: #1f4e79; border-radius: 4px; }
+  tfoot td { font-weight: 600; }
+  textarea { min-height: 90px; }
+  .bandeau { background: #fde1d3; color: #7a1f1f; border-radius: 6px; padding: 10px 12px; margin-bottom: 14px; font-size: .9rem; }
+</style>
+</head>
+<body>
+
+<!-- CONNEXION -->
+<section id="login" class="card">
+  <h2>Connexion</h2>
+  <form id="form-login">
+    <label for="email">Email</label>
+    <input id="email" type="email" required autocomplete="username">
+    <label for="mdp">Mot de passe</label>
+    <input id="mdp" type="password" required autocomplete="current-password">
+    <p><button type="submit">Se connecter</button></p>
+    <p id="login-err" class="erreur"></p>
+  </form>
+</section>
+
+<!-- APPLICATION -->
+<div id="app" hidden>
+  <header>
+    <strong>Suivi des absences</strong>
+    <nav id="nav">
+      <button data-ecran="saisie">Saisie</button>
+      <button data-ecran="liste">Absences</button>
+      <button data-ecran="classe">Par classe</button>
+      <button data-ecran="stats" class="admin-only">Statistiques</button>
+      <button data-ecran="eleves" class="admin-only">Élèves</button>
+      <button data-ecran="motifs" class="admin-only">Motifs</button>
+    </nav>
+    <span><span id="qui"></span> <button class="secondaire" id="btn-logout">Déconnexion</button></span>
+  </header>
+
+  <main>
+    <div id="bandeau" class="bandeau" hidden></div>
+
+    <!-- ÉCRAN : SAISIE -->
+    <section class="ecran card" id="ecran-saisie">
+      <h2>Saisir les absences</h2>
+      <div class="ligne">
+        <div><label for="classe">Classe</label><select id="classe"></select></div>
+        <div><label for="date">Date</label><input id="date" type="date"></div>
+        <div><label for="creneau">Créneau</label>
+          <select id="creneau">
+            <option>M1</option><option>M2</option><option>M3</option><option>M4</option>
+            <option>S1</option><option>S2</option><option>S3</option><option>S4</option>
+          </select>
+        </div>
+      </div>
+      <div class="scroll"><table><tbody id="liste-eleves"></tbody></table></div>
+      <p><button id="btn-save">Enregistrer</button> <span id="msg-save"></span></p>
+    </section>
+
+    <!-- ÉCRAN : LISTE EN DIRECT -->
+    <section class="ecran card" id="ecran-liste" hidden>
+      <h2>Absences enregistrées <small>(mise à jour en direct, 200 dernières)</small></h2>
+      <label for="filtre-classe">Filtrer par classe</label>
+      <select id="filtre-classe"></select>
+      <div class="scroll">
+        <table>
+          <thead><tr>
+            <th>Date</th><th>Élève</th><th>Classe</th><th>Créneau</th><th>Type</th>
+            <th>Motif</th><th>Justifiée</th><th>Saisi par</th><th class="admin-only"></th>
+          </tr></thead>
+          <tbody id="liste-absences"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ÉCRAN : PAR CLASSE (profs et admins) -->
+    <section class="ecran card" id="ecran-classe" hidden>
+      <h2>Absences par classe</h2>
+      <div class="ligne">
+        <div><label for="pc-classe">Classe</label><select id="pc-classe"></select></div>
+        <div><label for="pc-du">Du</label><input id="pc-du" type="date"></div>
+        <div><label for="pc-au">Au</label><input id="pc-au" type="date"></div>
+        <div style="flex:0 0 auto"><button id="pc-export" class="secondaire">Exporter CSV</button></div>
+      </div>
+      <h3>Récapitulatif par élève</h3>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Élève</th><th>Code Massar</th><th>Absences</th><th>Retards</th><th>Justifiées</th><th>Non justifiées</th></tr></thead>
+          <tbody id="pc-resume"></tbody>
+        </table>
+      </div>
+      <h3>Détail</h3>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Date</th><th>Élève</th><th>Créneau</th><th>Type</th><th>Motif</th><th>Justifiée</th></tr></thead>
+          <tbody id="pc-detail"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ÉCRAN : STATISTIQUES (admins) -->
+    <section class="ecran card admin-only" id="ecran-stats" hidden>
+      <h2>Statistiques par classe</h2>
+      <div class="ligne">
+        <div><label for="st-du">Du</label><input id="st-du" type="date"></div>
+        <div><label for="st-au">Au</label><input id="st-au" type="date"></div>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Classe</th><th>Élèves</th><th>Absences</th><th>Retards</th><th>Justifiées</th><th>Moyenne absences / élève</th></tr></thead>
+          <tbody id="st-corps"></tbody>
+          <tfoot id="st-total"></tfoot>
+        </table>
+      </div>
+    </section>
+
+    <!-- ÉCRAN : ÉLÈVES (admins) -->
+    <section class="ecran card admin-only" id="ecran-eleves" hidden>
+      <h2>Gérer les élèves</h2>
+      <form id="form-eleve">
+        <input type="hidden" id="el-id">
+        <div class="ligne">
+          <div><label for="el-code">Code Massar</label>
+            <input id="el-code" required maxlength="10" placeholder="B144008208"
+                   pattern="[A-Za-z][0-9]{9}" title="Une lettre suivie de 9 chiffres, par exemple B144008208"
+                   style="text-transform: uppercase"></div>
+          <div><label for="el-nom">Nom</label><input id="el-nom" required></div>
+          <div><label for="el-prenom">Prénom</label><input id="el-prenom" required></div>
+          <div><label for="el-classe">Classe</label><input id="el-classe" list="liste-classes" required></div>
+          <div><label for="el-email">Email parent</label><input id="el-email" type="email"></div>
+        </div>
+        <datalist id="liste-classes"></datalist>
+        <p>
+          <button type="submit" id="el-submit">Ajouter</button>
+          <button type="button" class="secondaire" id="el-annuler" hidden>Annuler la modification</button>
+        </p>
+      </form>
+
+      <h3>Importer plusieurs élèves</h3>
+      <p>Une ligne par élève : <code>code_massar;nom;prenom;classe;email_parent</code> (email facultatif).</p>
+      <textarea id="el-csv" placeholder="B144008208;Benali;Yasmine;2nde1;parent@example.com"></textarea>
+      <p><button id="btn-import">Importer</button> <span id="msg-import"></span></p>
+
+      <h3>Liste des élèves</h3>
+      <p><button id="el-export" class="secondaire">Exporter CSV</button></p>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Code Massar</th><th>Nom</th><th>Prénom</th><th>Classe</th><th>Email parent</th><th></th></tr></thead>
+          <tbody id="tb-eleves"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ÉCRAN : MOTIFS (admins) -->
+    <section class="ecran card admin-only" id="ecran-motifs" hidden>
+      <h2>Motifs d'absence</h2>
+      <form id="form-motif" class="ligne">
+        <div><label for="mo-libelle">Nouveau motif</label><input id="mo-libelle" required></div>
+        <div style="flex:0"><button type="submit">Ajouter</button></div>
+      </form>
+      <p id="msg-motif"></p>
+      <table>
+        <thead><tr><th>Motif</th><th></th></tr></thead>
+        <tbody id="tb-motifs"></tbody>
+      </table>
+    </section>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// ====== À REMPLACER (Supabase > Project Settings > API) ======
+const SUPABASE_URL = 'https://rnaeadzycotxegskhmam.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJuYWVhZHp5Y290eGVnc2tobWFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ2NzQ1MTQsImV4cCI6MjExMDI1MDUxNH0.k4WUqDQnoFBA1cy_roFxUMPOSOHUxNXEe4zTNNkh_ss';   // clé "anon" uniquement, jamais "service_role"
+// =============================================================
+
+// La bibliothèque Supabase vient d'un CDN : si elle n'est pas chargée, on le dit clairement
+if (typeof supabase === 'undefined') {
+  document.getElementById('login-err').textContent =
+    "La bibliothèque Supabase n'a pas pu être chargée (connexion internet coupée ou bloqueur de publicités ?). Rechargez la page.";
+  throw new Error('supabase-js non chargé');
+}
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+let profil = null, monId = null;
+let eleves = [], classes = [], motifs = [], absences = [];
+let channel = null, ecranCourant = 'saisie', derniereClasseSaisie = null;
+let dernierPC = { classe: '', du: '', au: '', lignes: [] };   // dernières données de l'écran "Par classe"
+const estAdmin = () => profil && profil.role === 'admin';
+
+const aujourdhui = () => new Date().toISOString().slice(0, 10);
+const ilYaJours = n => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+
+// Récupère toutes les lignes d'une requête (pages de 1000)
+async function fetchAll(construire) {
+  const taille = 1000;
+  let tout = [], depart = 0;
+  while (true) {
+    const { data, error } = await construire().range(depart, depart + taille - 1);
+    if (error) { signaler('Chargement : ' + error.message); break; }
+    tout = tout.concat(data);
+    if (data.length < taille) break;
+    depart += taille;
+  }
+  return tout;
+}
+
+// Télécharge un fichier CSV lisible directement par Excel en français
+// (séparateur ";", UTF-8 avec BOM pour les accents)
+function telechargerCSV(fichier, entetes, lignes) {
+  const cellule = v => {
+    let s = String(v ?? '');
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;   // empêche Excel d'exécuter une formule
+    return '"' + s.replace(/"/g, '""') + '"';
+  };
+  const contenu = [entetes, ...lignes].map(l => l.map(cellule).join(';')).join('\r\n');
+  const blob = new Blob(['﻿' + contenu], { type: 'text/csv;charset=utf-8' });
+  const lien = document.createElement('a');
+  lien.href = URL.createObjectURL(blob);
+  lien.download = fichier;
+  document.body.appendChild(lien);
+  lien.click();
+  lien.remove();
+  setTimeout(() => URL.revokeObjectURL(lien.href), 1000);
+}
+const nomFichier = s => String(s).replace(/[^\p{L}\p{N}-]+/gu, '_');
+
+// ---------- Connexion ----------
+$('form-login').addEventListener('submit', async e => {
+  e.preventDefault();
+  const err = $('login-err');
+  err.textContent = '';
+  if (SUPABASE_URL.includes('VOTRE-PROJET') || SUPABASE_KEY.includes('VOTRE_CLE')) {
+    err.textContent = "Configuration manquante : remplacez SUPABASE_URL et SUPABASE_KEY dans index.html, puis redéployez.";
+    return;
+  }
+  let error;
+  try {
+    ({ error } = await sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('mdp').value }));
+  } catch (ex) {
+    err.textContent = "Connexion impossible au serveur : vérifiez SUPABASE_URL. (" + ex.message + ")";
+    return;
+  }
+  if (error) {
+    const m = (error.message || '').toLowerCase();
+    err.textContent =
+      m.includes('invalid login') ? 'Email ou mot de passe incorrect (ou compte inexistant).' :
+      m.includes('not confirmed') ? "Compte non confirmé : dans Supabase, Authentication > Users, ouvrez l'utilisateur et confirmez-le." :
+      m.includes('api key') || m.includes('apikey') ? 'Clé API invalide : vérifiez SUPABASE_KEY.' :
+      m.includes('fetch') ? "Connexion impossible au serveur : vérifiez SUPABASE_URL." :
+      'Erreur : ' + error.message;
+    return;
+  }
+  demarrer();
+});
+
+$('btn-logout').addEventListener('click', async () => {
+  await sb.auth.signOut();
+  location.reload();
+});
+
+// Affiche une erreur de chargement des données dans un bandeau rouge (au lieu d'échouer en silence)
+const erreursData = new Set();
+function signaler(message) {
+  erreursData.add(message);
+  const b = $('bandeau');
+  b.hidden = false;
+  b.innerHTML = '<strong>Problème de données :</strong><br>' + [...erreursData].map(esc).join('<br>') +
+    '<br><small>Si le message contient « permission denied » : exécutez le script schema.sql en entier dans Supabase (SQL Editor).</small>';
+}
+function effacerSignalement() { erreursData.clear(); $('bandeau').hidden = true; }
+
+async function init() {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) await demarrer();
+  } catch (ex) {
+    $('login-err').textContent = 'Erreur au démarrage : ' + ex.message;
+  }
+}
+
+async function demarrer() {
+  const err = $('login-err');
+  try {
+    const { data: { user }, error: e0 } = await sb.auth.getUser();
+    if (e0 || !user) throw new Error('Session invalide : ' + (e0 ? e0.message : 'utilisateur introuvable') + '. Reconnectez-vous.');
+    monId = user.id;
+
+    const { data, error } = await sb.from('profils').select('*').eq('id', user.id).maybeSingle();
+    if (error) {
+      throw new Error('Lecture du profil impossible : « ' + error.message + ' ». ' +
+        (/permission denied/i.test(error.message)
+          ? 'Les droits de la base sont absents : exécutez le script schema.sql en entier dans Supabase (SQL Editor).'
+          : /does not exist|schema cache/i.test(error.message)
+            ? "La table n'existe pas : exécutez le script schema.sql dans Supabase (SQL Editor)."
+            : ''));
+    }
+    if (!data) {
+      throw new Error("Connecté, mais ce compte n'a pas de profil. Exécutez (ou réexécutez) le script schema.sql dans Supabase : il crée les profils manquants.");
+    }
+    profil = data;
+  } catch (ex) {
+    err.textContent = ex.message;
+    await sb.auth.signOut();
+    $('login').hidden = false;
+    $('app').hidden = true;
+    return;
+  }
+
+  err.textContent = '';
+  effacerSignalement();
+  $('login').hidden = true;
+  $('app').hidden = false;
+  $('qui').textContent = `${profil.nom || ''} (${profil.role})`;
+  // Affichage seulement : la vraie protection est dans les règles RLS de la base
+  document.querySelectorAll('.admin-only').forEach(el => el.hidden = !estAdmin());
+
+  $('date').value = aujourdhui();
+  $('pc-du').value = $('st-du').value = ilYaJours(30);
+  $('pc-au').value = $('st-au').value = aujourdhui();
+
+  await chargerMotifs();
+  await chargerEleves();
+  await chargerAbsences();
+  ecouterTempsReel();
+  showEcran('saisie');
+}
+
+// ---------- Navigation ----------
+function showEcran(nom) {
+  if (['stats', 'eleves', 'motifs'].includes(nom) && !estAdmin()) return;
+  ecranCourant = nom;
+  document.querySelectorAll('.ecran').forEach(s => s.hidden = s.id !== 'ecran-' + nom);
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('actif', b.dataset.ecran === nom));
+  if (nom === 'classe') afficherParClasse();
+  if (nom === 'stats') chargerStats();
+  if (nom === 'eleves') afficherTableEleves();
+  if (nom === 'motifs') afficherMotifs();
+}
+$('nav').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (b) showEcran(b.dataset.ecran);
+});
+
+// ---------- Données de référence ----------
+function remplirSelect(sel, valeurs, avecTous) {
+  const courant = sel.value;
+  sel.innerHTML = (avecTous ? '<option value="">Toutes</option>' : '') +
+    valeurs.map(c => `<option>${esc(c)}</option>`).join('');
+  if ([...sel.options].some(o => o.value === courant)) sel.value = courant;
+}
+
+async function chargerEleves() {
+  const { data, error } = await sb.from('eleves').select('*').order('classe').order('nom');
+  if (error) signaler('Élèves : ' + error.message);
+  eleves = data || [];
+  classes = [...new Set(eleves.map(e => e.classe))];
+  remplirSelect($('classe'), classes);
+  remplirSelect($('filtre-classe'), classes, true);
+  remplirSelect($('pc-classe'), classes);
+  $('liste-classes').innerHTML = classes.map(c => `<option value="${esc(c)}">`).join('');
+  afficherSaisie();
+  afficherAbsences();
+  if (ecranCourant === 'eleves') afficherTableEleves();
+  if (ecranCourant === 'classe') afficherParClasse();
+}
+
+async function chargerMotifs() {
+  const { data, error } = await sb.from('motifs').select('*').order('libelle');
+  if (error) signaler('Motifs : ' + error.message);
+  motifs = data || [];
+  afficherSaisie();
+  afficherAbsences();
+  if (ecranCourant === 'motifs') afficherMotifs();
+}
+
+const optionsMotifs = (choisi = '') =>
+  '<option value="">—</option>' +
+  motifs.map(m => `<option ${m.libelle === choisi ? 'selected' : ''}>${esc(m.libelle)}</option>`).join('') +
+  (choisi && !motifs.some(m => m.libelle === choisi) ? `<option selected>${esc(choisi)}</option>` : '');
+
+// ---------- Écran : saisie ----------
+function afficherSaisie() {
+  const classe = $('classe').value;
+
+  // On conserve les choix en cours si la liste est rechargée pour la même classe
+  const memo = {};
+  if (classe === derniereClasseSaisie) {
+    document.querySelectorAll('#liste-eleves tr').forEach(tr => {
+      const s = tr.querySelector('.statut');
+      if (s && s.value) memo[s.dataset.id] = { statut: s.value, motif: tr.querySelector('.motif').value };
+    });
+  }
+  derniereClasseSaisie = classe;
+
+  $('liste-eleves').innerHTML = eleves.filter(e => e.classe === classe).map(e => `
+    <tr>
+      <td>${esc(e.nom)} ${esc(e.prenom)}</td>
+      <td>${esc(e.code_massar)}</td>
+      <td><select class="statut" data-id="${esc(e.code_massar)}">
+        <option value="">Présent</option>
+        <option value="absence">Absent</option>
+        <option value="retard">Retard</option>
+      </select></td>
+      <td><select class="motif" disabled>${optionsMotifs()}</select></td>
+    </tr>`).join('');
+
+  for (const id in memo) {
+    const s = document.querySelector(`#liste-eleves .statut[data-id="${id}"]`);
+    if (!s) continue;
+    s.value = memo[id].statut;
+    const m = s.closest('tr').querySelector('.motif');
+    m.disabled = false;
+    m.value = memo[id].motif;
+  }
+}
+$('classe').addEventListener('change', afficherSaisie);
+
+$('liste-eleves').addEventListener('change', e => {
+  if (!e.target.classList.contains('statut')) return;
+  const m = e.target.closest('tr').querySelector('.motif');
+  m.disabled = !e.target.value;
+  if (!e.target.value) m.value = '';
+});
+
+$('btn-save').addEventListener('click', async () => {
+  const lignes = [...document.querySelectorAll('#liste-eleves tr')]
+    .filter(tr => tr.querySelector('.statut').value)
+    .map(tr => ({
+      eleve_id: tr.querySelector('.statut').dataset.id,
+      date: $('date').value,
+      creneau: $('creneau').value,
+      type: tr.querySelector('.statut').value,
+      motif: tr.querySelector('.motif').value || null
+    }));
+
+  const msg = $('msg-save');
+  if (!lignes.length) { msg.className = 'erreur'; msg.textContent = 'Aucune absence à enregistrer'; return; }
+
+  const { error } = await sb.from('absences').insert(lignes);
+  if (error) {
+    msg.className = 'erreur';
+    msg.textContent = error.code === '23505' ? 'Déjà enregistré pour ce créneau' : 'Erreur : ' + error.message;
+    return;
+  }
+  msg.className = 'info';
+  msg.textContent = `${lignes.length} enregistrement(s) ajouté(s)`;
+  derniereClasseSaisie = null;
+  afficherSaisie();
+});
+
+// ---------- Écran : liste en direct ----------
+async function chargerAbsences() {
+  const { data, error } = await sb.from('absences')
+    .select('id, date, creneau, type, motif, justifiee, saisi_par, eleves(nom, prenom, classe), profils(nom)')
+    .order('date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(200);
+  if (error) signaler('Absences : ' + error.message);
+  absences = data || [];
+  afficherAbsences();
+}
+
+function afficherAbsences() {
+  const filtre = $('filtre-classe').value;
+  $('liste-absences').innerHTML = absences
+    .filter(a => !filtre || (a.eleves && a.eleves.classe === filtre))
+    .map(a => {
+      const peutModifier = estAdmin() || a.saisi_par === monId;
+      const motifCell = peutModifier
+        ? `<select data-act="motif" data-id="${a.id}">${optionsMotifs(a.motif || '')}</select>`
+        : esc(a.motif);
+      return `
+      <tr>
+        <td>${esc(a.date)}</td>
+        <td>${esc(a.eleves?.nom)} ${esc(a.eleves?.prenom)}</td>
+        <td>${esc(a.eleves?.classe)}</td>
+        <td>${esc(a.creneau)}</td>
+        <td>${esc(a.type)}</td>
+        <td>${motifCell}</td>
+        <td><span class="badge ${a.justifiee ? 'oui' : 'non'}">${a.justifiee ? 'Oui' : 'Non'}</span></td>
+        <td>${esc(a.profils?.nom)}</td>
+        ${estAdmin() ? `<td>
+          <button class="secondaire" data-act="just" data-id="${a.id}" data-val="${!a.justifiee}">
+            ${a.justifiee ? 'Annuler justif.' : 'Justifier'}</button>
+          <button class="danger" data-act="del" data-id="${a.id}">Suppr.</button>
+        </td>` : ''}
+      </tr>`;
+    }).join('');
+}
+$('filtre-classe').addEventListener('change', afficherAbsences);
+
+$('liste-absences').addEventListener('click', async e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  const id = Number(b.dataset.id);
+  if (b.dataset.act === 'just') {
+    const { error } = await sb.from('absences').update({ justifiee: b.dataset.val === 'true' }).eq('id', id);
+    if (error) alert(error.message);
+  }
+  if (b.dataset.act === 'del' && confirm('Supprimer cet enregistrement ?')) {
+    const { error } = await sb.from('absences').delete().eq('id', id);
+    if (error) alert(error.message);
+  }
+});
+
+$('liste-absences').addEventListener('change', async e => {
+  const s = e.target.closest('select[data-act="motif"]');
+  if (!s) return;
+  const { error } = await sb.from('absences').update({ motif: s.value || null }).eq('id', Number(s.dataset.id));
+  if (error) alert(error.message);
+});
+
+// ---------- Écran : par classe ----------
+async function afficherParClasse() {
+  const classe = $('pc-classe').value;
+  if (!classe) { $('pc-resume').innerHTML = ''; $('pc-detail').innerHTML = ''; return; }
+  const du = $('pc-du').value, au = $('pc-au').value;
+
+  const lignes = await fetchAll(() => {
+    let q = sb.from('absences')
+      .select('id, date, creneau, type, justifiee, motif, eleve_id, eleves!inner(nom, prenom, classe)')
+      .eq('eleves.classe', classe);
+    if (du) q = q.gte('date', du);
+    if (au) q = q.lte('date', au);
+    return q.order('date', { ascending: false }).order('id');
+  });
+
+  dernierPC = { classe, du, au, lignes };
+
+  $('pc-resume').innerHTML = eleves.filter(e => e.classe === classe).map(e => {
+    const l = lignes.filter(r => r.eleve_id === e.code_massar);
+    const justifiees = l.filter(r => r.justifiee).length;
+    return `<tr>
+      <td>${esc(e.nom)} ${esc(e.prenom)}</td>
+      <td>${esc(e.code_massar)}</td>
+      <td>${l.filter(r => r.type === 'absence').length}</td>
+      <td>${l.filter(r => r.type === 'retard').length}</td>
+      <td>${justifiees}</td>
+      <td>${l.length - justifiees}</td>
+    </tr>`;
+  }).join('');
+
+  $('pc-detail').innerHTML = lignes.length ? lignes.map(r => `
+    <tr>
+      <td>${esc(r.date)}</td>
+      <td>${esc(r.eleves?.nom)} ${esc(r.eleves?.prenom)}</td>
+      <td>${esc(r.creneau)}</td>
+      <td>${esc(r.type)}</td>
+      <td>${esc(r.motif)}</td>
+      <td><span class="badge ${r.justifiee ? 'oui' : 'non'}">${r.justifiee ? 'Oui' : 'Non'}</span></td>
+    </tr>`).join('') : '<tr><td colspan="6">Aucune absence sur cette période.</td></tr>';
+}
+['pc-classe', 'pc-du', 'pc-au'].forEach(id => $(id).addEventListener('change', afficherParClasse));
+
+$('pc-export').addEventListener('click', () => {
+  if (!dernierPC.lignes.length) { alert('Aucune absence à exporter sur cette période.'); return; }
+  telechargerCSV(
+    `absences_${nomFichier(dernierPC.classe)}_${dernierPC.du}_${dernierPC.au}.csv`,
+    ['Code Massar', 'Classe', 'Date', 'Nom', 'Prénom', 'Créneau', 'Type', 'Motif', 'Justifiée'],
+    dernierPC.lignes.map(r => [r.eleve_id, r.eleves?.classe, r.date, r.eleves?.nom, r.eleves?.prenom,
+      r.creneau, r.type, r.motif, r.justifiee ? 'Oui' : 'Non'])
+  );
+});
+
+// ---------- Écran : statistiques (admins) ----------
+async function chargerStats() {
+  const du = $('st-du').value, au = $('st-au').value;
+  if (!du || !au) return;
+  const { data, error } = await sb.rpc('stats_par_classe', { debut: du, fin: au });
+  if (error) { $('st-corps').innerHTML = `<tr><td colspan="6" class="erreur">${esc(error.message)}</td></tr>`; return; }
+
+  const lignes = (data || []).map(r => ({
+    classe: r.classe,
+    eleves: Number(r.nb_eleves),
+    abs: Number(r.nb_absences),
+    ret: Number(r.nb_retards),
+    just: Number(r.nb_justifiees)
+  }));
+  const moyenne = l => l.eleves ? l.abs / l.eleves : 0;
+  const max = Math.max(0.0001, ...lignes.map(moyenne));
+
+  $('st-corps').innerHTML = lignes.map(l => `
+    <tr>
+      <td>${esc(l.classe)}</td>
+      <td>${l.eleves}</td>
+      <td>${l.abs}</td>
+      <td>${l.ret}</td>
+      <td>${l.just}</td>
+      <td>${moyenne(l).toFixed(1)}
+        <div class="barre"><span style="width:${Math.round(moyenne(l) / max * 100)}%"></span></div></td>
+    </tr>`).join('');
+
+  const t = lignes.reduce((a, l) => ({ eleves: a.eleves + l.eleves, abs: a.abs + l.abs, ret: a.ret + l.ret, just: a.just + l.just }),
+    { eleves: 0, abs: 0, ret: 0, just: 0 });
+  $('st-total').innerHTML = `<tr><td>Total</td><td>${t.eleves}</td><td>${t.abs}</td><td>${t.ret}</td><td>${t.just}</td>
+    <td>${t.eleves ? (t.abs / t.eleves).toFixed(1) : '0.0'}</td></tr>`;
+}
+['st-du', 'st-au'].forEach(id => $(id).addEventListener('change', chargerStats));
+
+// ---------- Écran : élèves (admins) ----------
+function afficherTableEleves() {
+  $('tb-eleves').innerHTML = eleves.map(e => `
+    <tr>
+      <td>${esc(e.code_massar)}</td><td>${esc(e.nom)}</td><td>${esc(e.prenom)}</td><td>${esc(e.classe)}</td><td>${esc(e.email_parent)}</td>
+      <td>
+        <button class="secondaire" data-act="edit" data-id="${esc(e.code_massar)}">Modifier</button>
+        <button class="danger" data-act="del" data-id="${esc(e.code_massar)}">Suppr.</button>
+      </td>
+    </tr>`).join('');
+}
+
+function reinitFormEleve() {
+  $('form-eleve').reset();
+  $('el-id').value = '';
+  $('el-submit').textContent = 'Ajouter';
+  $('el-annuler').hidden = true;
+}
+$('el-annuler').addEventListener('click', reinitFormEleve);
+
+$('form-eleve').addEventListener('submit', async e => {
+  e.preventDefault();
+  const fiche = {
+    code_massar: $('el-code').value.trim().toUpperCase(),
+    nom: $('el-nom').value.trim(),
+    prenom: $('el-prenom').value.trim(),
+    classe: $('el-classe').value.trim(),
+    email_parent: $('el-email').value.trim() || null
+  };
+  const ancienCode = $('el-id').value;   // vide = nouvel élève
+  const { error } = ancienCode
+    ? await sb.from('eleves').update(fiche).eq('code_massar', ancienCode)
+    : await sb.from('eleves').insert(fiche);
+  if (error) {
+    alert(error.code === '23505' ? 'Ce code Massar existe déjà.'
+        : error.code === '23514' ? 'Code Massar invalide : une lettre suivie de 9 chiffres (ex. B144008208).'
+        : error.message);
+    return;
+  }
+  reinitFormEleve();
+  await chargerEleves();
+});
+
+$('tb-eleves').addEventListener('click', async e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  const code = b.dataset.id;
+  const el = eleves.find(x => x.code_massar === code);
+  if (!el) return;
+  if (b.dataset.act === 'edit') {
+    $('el-id').value = el.code_massar;
+    $('el-code').value = el.code_massar;
+    $('el-nom').value = el.nom;
+    $('el-prenom').value = el.prenom;
+    $('el-classe').value = el.classe;
+    $('el-email').value = el.email_parent || '';
+    $('el-submit').textContent = 'Enregistrer la modification';
+    $('el-annuler').hidden = false;
+    $('el-nom').focus();
+  }
+  if (b.dataset.act === 'del' &&
+      confirm(`Supprimer ${el.nom} ${el.prenom} ? Toutes ses absences seront aussi supprimées.`)) {
+    const { error } = await sb.from('eleves').delete().eq('code_massar', code);
+    if (error) alert(error.message);
+    else await chargerEleves();
+  }
+});
+
+$('btn-import').addEventListener('click', async () => {
+  const msg = $('msg-import');
+  const lignes = $('el-csv').value.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const rows = [];
+  for (let i = 0; i < lignes.length; i++) {
+    const c = lignes[i].split(/[;,\t]/).map(x => x.trim());
+    if (i === 0 && c[0].toLowerCase().startsWith('code')) continue;   // ligne d'en-tête
+    const code = (c[0] || '').toUpperCase();
+    if (c.length < 4 || !c[1] || !c[2] || !c[3]) {
+      msg.className = 'erreur';
+      msg.textContent = `Ligne ${i + 1} incomplète : code_massar;nom;prenom;classe sont obligatoires`;
+      return;
+    }
+    if (!/^[A-Z][0-9]{9}$/.test(code)) {
+      msg.className = 'erreur';
+      msg.textContent = `Ligne ${i + 1} : code Massar invalide (une lettre + 9 chiffres, ex. B144008208)`;
+      return;
+    }
+    if (rows.some(r => r.code_massar === code)) {
+      msg.className = 'erreur';
+      msg.textContent = `Ligne ${i + 1} : le code ${code} apparaît deux fois dans la liste`;
+      return;
+    }
+    rows.push({ code_massar: code, nom: c[1], prenom: c[2], classe: c[3], email_parent: c[4] || null });
+  }
+  if (!rows.length) { msg.className = 'erreur'; msg.textContent = 'Rien à importer'; return; }
+  const { error } = await sb.from('eleves').insert(rows);
+  if (error) {
+    msg.className = 'erreur';
+    msg.textContent = error.code === '23505'
+      ? 'Import annulé : un de ces codes Massar existe déjà dans la base'
+      : 'Erreur : ' + error.message;
+    return;
+  }
+  msg.className = 'info';
+  msg.textContent = `${rows.length} élève(s) importé(s)`;
+  $('el-csv').value = '';
+  await chargerEleves();
+});
+
+$('el-export').addEventListener('click', () => {
+  if (!eleves.length) { alert('Aucun élève à exporter.'); return; }
+  telechargerCSV('eleves.csv', ['Code Massar', 'Nom', 'Prénom', 'Classe', 'Email parent'],
+    eleves.map(e => [e.code_massar, e.nom, e.prenom, e.classe, e.email_parent]));
+});
+
+// ---------- Écran : motifs (admins) ----------
+function afficherMotifs() {
+  $('tb-motifs').innerHTML = motifs.map(m => `
+    <tr><td>${esc(m.libelle)}</td>
+    <td><button class="danger" data-id="${m.id}">Suppr.</button></td></tr>`).join('');
+}
+
+$('form-motif').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msg = $('msg-motif');
+  const { error } = await sb.from('motifs').insert({ libelle: $('mo-libelle').value.trim() });
+  if (error) {
+    msg.className = 'erreur';
+    msg.textContent = error.code === '23505' ? 'Ce motif existe déjà' : 'Erreur : ' + error.message;
+    return;
+  }
+  msg.textContent = '';
+  $('mo-libelle').value = '';
+  await chargerMotifs();
+});
+
+$('tb-motifs').addEventListener('click', async e => {
+  const b = e.target.closest('button');
+  if (!b || !confirm('Supprimer ce motif de la liste ? Les absences déjà saisies le conservent.')) return;
+  const { error } = await sb.from('motifs').delete().eq('id', Number(b.dataset.id));
+  if (error) alert(error.message);
+  else await chargerMotifs();
+});
+
+// ---------- Temps réel ----------
+function ecouterTempsReel() {
+  if (channel) sb.removeChannel(channel);
+  channel = sb.channel('live')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'absences' }, () => {
+      chargerAbsences();
+      if (ecranCourant === 'classe') afficherParClasse();
+      if (ecranCourant === 'stats') chargerStats();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'eleves' }, () => chargerEleves())
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'motifs' }, () => chargerMotifs())
+    .subscribe();
+}
+
+init();
+</script>
+</body>
+</html>
