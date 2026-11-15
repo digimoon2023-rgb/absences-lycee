@@ -51,6 +51,9 @@
     <input id="mdp" type="password" required autocomplete="current-password">
     <p><button type="submit">Se connecter</button></p>
     <p id="login-err" class="erreur"></p>
+    <p><button type="button" class="secondaire" id="btn-diag">Tester la connexion au serveur</button></p>
+    <pre id="diag" hidden style="white-space:pre-wrap;font-size:.8rem;background:#f4f6f8;padding:8px;border-radius:6px;margin:0 0 8px"></pre>
+    <p id="cfg-info" style="font-size:.78rem;color:#52606d;margin:0"></p>
   </form>
 </section>
 
@@ -202,8 +205,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 // ====== À REMPLACER (Supabase > Project Settings > API) ======
-const SUPABASE_URL = 'https://rnaeadzycotxegskhmam.supabase.co';
-const SUPABASE_KEY = 'sb_secret_zIWRXQjU2kTZ2jE1cP6YXA_1SHfiq-3';   // clé "anon" uniquement, jamais "service_role"
+const SUPABASE_URL = 'https://cgygfmmcbfkmwpbdswiu.supabase.co/rest/v1/';
+const SUPABASE_KEY = 'sb_publishable_Rbqlx4EfIh-dLWnmDGvs0Q_M9GQILrP';   // clé "anon" uniquement, jamais "service_role"
 // =============================================================
 
 // La bibliothèque Supabase vient d'un CDN : si elle n'est pas chargée, on le dit clairement
@@ -213,6 +216,49 @@ if (typeof supabase === 'undefined') {
   throw new Error('supabase-js non chargé');
 }
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ---------- Diagnostic de connexion ----------
+const VERSION_SITE = '2026-11-15 v4';
+document.getElementById('cfg-info').textContent =
+  'Version du site : ' + VERSION_SITE + ' — projet : ' + SUPABASE_URL.replace(/^https?:\/\//, '');
+
+function typeCle(k) {
+  if (k.startsWith('sb_secret_')) return 'CLÉ SECRÈTE : interdite dans le site, à remplacer par la clé publishable';
+  if (k.startsWith('sb_publishable_')) return 'clé publishable (correcte)';
+  if (k.startsWith('eyJ')) {
+    try {
+      const p = JSON.parse(atob(k.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      return p.role === 'anon' ? 'clé anon (correcte)' : 'clé « ' + p.role + ' » : INTERDITE dans le site';
+    } catch (e) { return 'clé illisible (copie incomplète ?)'; }
+  }
+  return 'format inconnu : elle doit commencer par eyJ ou sb_publishable_';
+}
+
+document.getElementById('btn-diag').addEventListener('click', async () => {
+  const d = document.getElementById('diag');
+  const l = [];
+  const afficher = () => { d.hidden = false; d.textContent = l.join('\n'); };
+  l.push('Adresse utilisée : ' + SUPABASE_URL);
+  l.push('Clé : ' + SUPABASE_KEY.slice(0, 14) + '… (' + SUPABASE_KEY.length + ' caractères) — ' + typeCle(SUPABASE_KEY));
+  if (/\/(rest|auth)\/v1/.test(SUPABASE_URL) || SUPABASE_URL.endsWith('/'))
+    l.push("PROBLÈME : l'adresse ne doit ni finir par / ni contenir /rest/v1.");
+  if (!/^https:\/\/[a-z0-9]{20}\.supabase\.co$/.test(SUPABASE_URL))
+    l.push("Attention : l'adresse n'a pas la forme https://xxxxxxxxxxxxxxxxxxxx.supabase.co (20 caractères avant .supabase.co).");
+  l.push('Test du serveur en cours…');
+  afficher();
+  try {
+    const r = await fetch(SUPABASE_URL.replace(/\/+$/, '') + '/auth/v1/settings', { headers: { apikey: SUPABASE_KEY } });
+    l.pop();
+    l.push('Réponse du serveur : HTTP ' + r.status +
+      (r.ok ? ' — le serveur répond, adresse et clé acceptées.' : ' — le serveur répond mais refuse la demande.'));
+    if (!r.ok) l.push((await r.text()).slice(0, 220));
+  } catch (ex) {
+    l.pop();
+    l.push('AUCUNE RÉPONSE du serveur (' + ex.message + ').');
+    l.push("Causes possibles : projet supprimé ou en pause, adresse erronée, ou connexion à supabase.co bloquée (bloqueur de publicités, antivirus, réseau du lycée).");
+  }
+  afficher();
+});
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -273,7 +319,8 @@ $('form-login').addEventListener('submit', async e => {
   try {
     ({ error } = await sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('mdp').value }));
   } catch (ex) {
-    err.textContent = "Connexion impossible au serveur : vérifiez SUPABASE_URL. (" + ex.message + ")";
+    err.textContent = "Connexion impossible au serveur (adresse utilisée : " + SUPABASE_URL + "). Détail : " + ex.message +
+      ". Cliquez sur « Tester la connexion au serveur » ci-dessous.";
     return;
   }
   if (error) {
@@ -282,7 +329,7 @@ $('form-login').addEventListener('submit', async e => {
       m.includes('invalid login') ? 'Email ou mot de passe incorrect (ou compte inexistant).' :
       m.includes('not confirmed') ? "Compte non confirmé : dans Supabase, Authentication > Users, ouvrez l'utilisateur et confirmez-le." :
       m.includes('api key') || m.includes('apikey') ? 'Clé API invalide : vérifiez SUPABASE_KEY.' :
-      m.includes('fetch') ? "Connexion impossible au serveur : vérifiez SUPABASE_URL." :
+      m.includes('fetch') ? "Connexion impossible au serveur (adresse utilisée : " + SUPABASE_URL + "). Cliquez sur « Tester la connexion au serveur » ci-dessous." :
       'Erreur : ' + error.message;
     return;
   }
