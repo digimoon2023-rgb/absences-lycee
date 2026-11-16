@@ -37,6 +37,14 @@
   tfoot td { font-weight: 600; }
   textarea { min-height: 90px; }
   .bandeau { background: #fde1d3; color: #7a1f1f; border-radius: 6px; padding: 10px 12px; margin-bottom: 14px; font-size: .9rem; }
+  .bandeau.avert { background: #fff4d6; color: #6b4e00; }
+  .gris { background: #e4e9ee; }
+  .aide { font-size: .85rem; color: #52606d; margin: 6px 0 12px; }
+  .editeur { border: 1px solid #c3cbd3; border-radius: 8px; padding: 12px; margin-bottom: 16px; background: #fafbfc; }
+  .grille-classes { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 4px 10px; max-height: 260px; overflow: auto; border: 1px solid #e4e9ee; border-radius: 6px; padding: 8px; margin-top: 8px; background: #fff; }
+  .grille-classes label { display: flex; align-items: center; gap: 6px; margin: 0; font-size: .88rem; }
+  .grille-classes input { width: auto; }
+  tr.sans-classe td { background: #fff9e6; }
 </style>
 </head>
 <body>
@@ -68,12 +76,17 @@
       <button data-ecran="stats" class="admin-only">Statistiques</button>
       <button data-ecran="eleves" class="admin-only">Élèves</button>
       <button data-ecran="motifs" class="admin-only">Motifs</button>
+      <button data-ecran="utilisateurs" class="admin-only">Utilisateurs</button>
     </nav>
     <span><span id="qui"></span> <button class="secondaire" id="btn-logout">Déconnexion</button></span>
   </header>
 
   <main>
     <div id="bandeau" class="bandeau" hidden></div>
+    <div id="avert-classes" class="bandeau avert" hidden>
+      <strong>Aucune classe ne vous est attribuée.</strong> Vous ne voyez aucun élève pour le moment :
+      demandez à un administrateur de vous attribuer vos classes (écran « Utilisateurs »).
+    </div>
 
     <!-- ÉCRAN : SAISIE -->
     <section class="ecran card" id="ecran-saisie">
@@ -199,6 +212,54 @@
         <tbody id="tb-motifs"></tbody>
       </table>
     </section>
+
+    <!-- ÉCRAN : UTILISATEURS (admins) -->
+    <section class="ecran card admin-only" id="ecran-utilisateurs" hidden>
+      <h2>Utilisateurs : rôle et classes</h2>
+      <p class="aide">
+        <strong>Pour ajouter un utilisateur :</strong> dans Supabase, ouvrez Authentication &gt; Users &gt; Add user
+        (email + mot de passe, « Auto Confirm User » coché). Il apparaît ensuite ici automatiquement avec le rôle
+        « Utilisateur (prof) » et aucune classe : cliquez sur « Modifier » pour lui attribuer son rôle et ses classes.
+      </p>
+
+      <div id="u-editeur" class="editeur" hidden>
+        <h3 id="u-titre" style="margin-top:0"></h3>
+        <div class="ligne">
+          <div><label for="u-nom">Nom affiché</label><input id="u-nom"></div>
+          <div><label for="u-role">Rôle</label>
+            <select id="u-role">
+              <option value="prof">Utilisateur (prof)</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+        </div>
+        <p id="u-aide-role" class="aide"></p>
+
+        <div id="u-classes-bloc">
+          <label>Classes attribuées <span id="u-compte"></span></label>
+          <div class="ligne">
+            <div style="flex:2"><input id="u-filtre" placeholder="Filtrer les classes (ex. 2BAC, TCSF…)"></div>
+            <div style="flex:0 0 auto"><button type="button" class="secondaire" id="u-tout">Cocher les classes affichées</button></div>
+            <div style="flex:0 0 auto"><button type="button" class="secondaire" id="u-rien">Décocher les classes affichées</button></div>
+          </div>
+          <div id="u-grille" class="grille-classes"></div>
+        </div>
+
+        <p>
+          <button type="button" id="u-save">Enregistrer</button>
+          <button type="button" class="secondaire" id="u-annuler">Annuler</button>
+          <span id="u-msg"></span>
+        </p>
+      </div>
+
+      <p><button type="button" class="secondaire" id="u-actualiser">Actualiser la liste</button></p>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Nom</th><th>Email</th><th>Rôle</th><th>Classes</th><th></th></tr></thead>
+          <tbody id="tb-utilisateurs"></tbody>
+        </table>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -206,7 +267,7 @@
 <script>
 // ====== À REMPLACER (Supabase > Project Settings > API) ======
 const SUPABASE_URL = 'https://cgygfmmcbfkmwpbdswiu.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_Rbqlx4EfIh-dLWnmDGvs0Q_M9GQILrP';   // clé "anon" uniquement, jamais "service_role"
+const SUPABASE_KEY = 'VOTRE_CLE_PUBLISHABLE_ICI';   // collez ici votre clé « publishable » (sb_publishable_...), jamais la clé secrète
 // =============================================================
 
 // La bibliothèque Supabase vient d'un CDN : si elle n'est pas chargée, on le dit clairement
@@ -218,7 +279,7 @@ if (typeof supabase === 'undefined') {
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ---------- Diagnostic de connexion ----------
-const VERSION_SITE = '2026-11-15 v4';
+const VERSION_SITE = '2026-11-16 v5';
 document.getElementById('cfg-info').textContent =
   'Version du site : ' + VERSION_SITE + ' — projet : ' + SUPABASE_URL.replace(/^https?:\/\//, '');
 
@@ -393,9 +454,7 @@ async function demarrer() {
   effacerSignalement();
   $('login').hidden = true;
   $('app').hidden = false;
-  $('qui').textContent = `${profil.nom || ''} (${profil.role})`;
-  // Affichage seulement : la vraie protection est dans les règles RLS de la base
-  document.querySelectorAll('.admin-only').forEach(el => el.hidden = !estAdmin());
+  appliquerProfil();
 
   $('date').value = aujourdhui();
   $('pc-du').value = $('st-du').value = ilYaJours(30);
@@ -408,9 +467,32 @@ async function demarrer() {
   showEcran('saisie');
 }
 
+// Affiche le rôle et les classes du compte connecté, et les écrans autorisés
+// (affichage seulement : la vraie protection est dans les règles RLS de la base)
+const ECRANS_ADMIN = ['stats', 'eleves', 'motifs', 'utilisateurs'];
+function appliquerProfil() {
+  const nb = (profil.classes || []).length;
+  $('qui').textContent = estAdmin()
+    ? `${profil.nom || ''} (admin)`
+    : `${profil.nom || ''} (prof · ${nb} classe${nb > 1 ? 's' : ''})`;
+  document.querySelectorAll('.admin-only').forEach(el => el.hidden = !estAdmin());
+  $('avert-classes').hidden = estAdmin() || nb > 0;
+}
+
+// Recharge mon profil (rôle ou classes modifiés par un admin) sans reconnexion
+async function rechargerMonProfil() {
+  const { data, error } = await sb.from('profils').select('*').eq('id', monId).maybeSingle();
+  if (error || !data) return;
+  profil = data;
+  appliquerProfil();
+  await chargerEleves();
+  await chargerAbsences();
+  showEcran(!estAdmin() && ECRANS_ADMIN.includes(ecranCourant) ? 'saisie' : ecranCourant);
+}
+
 // ---------- Navigation ----------
 function showEcran(nom) {
-  if (['stats', 'eleves', 'motifs'].includes(nom) && !estAdmin()) return;
+  if (ECRANS_ADMIN.includes(nom) && !estAdmin()) return;
   ecranCourant = nom;
   document.querySelectorAll('.ecran').forEach(s => s.hidden = s.id !== 'ecran-' + nom);
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('actif', b.dataset.ecran === nom));
@@ -418,6 +500,7 @@ function showEcran(nom) {
   if (nom === 'stats') chargerStats();
   if (nom === 'eleves') afficherTableEleves();
   if (nom === 'motifs') afficherMotifs();
+  if (nom === 'utilisateurs') chargerUtilisateurs();
 }
 $('nav').addEventListener('click', e => {
   const b = e.target.closest('button');
@@ -823,10 +906,149 @@ $('tb-motifs').addEventListener('click', async e => {
   else await chargerMotifs();
 });
 
+// ---------- Écran : utilisateurs (admins) ----------
+const LIB_ROLE = { prof: 'Utilisateur (prof)', admin: 'Admin' };
+const triClasses = (a, b) => a.localeCompare(b, 'fr', { numeric: true });
+let utilisateurs = [], editionId = null, coches = new Set();
+
+async function chargerUtilisateurs() {
+  const corps = $('tb-utilisateurs');
+  const { data, error } = await sb.rpc('liste_utilisateurs');
+  if (error) {
+    corps.innerHTML = `<tr><td colspan="5" class="erreur">Erreur : ${esc(error.message)}
+      ${/function|schema cache|does not exist/i.test(error.message) ? '<br>Exécutez le script ajout_utilisateurs.sql dans Supabase (SQL Editor).' : ''}</td></tr>`;
+    return;
+  }
+  utilisateurs = data || [];
+  if (utilisateurs.length && !('classes' in utilisateurs[0])) {
+    corps.innerHTML = `<tr><td colspan="5" class="erreur">La base n'est pas à jour : exécutez le script ajout_utilisateurs.sql dans Supabase (SQL Editor).</td></tr>`;
+    return;
+  }
+  afficherUtilisateurs();
+}
+
+function afficherUtilisateurs() {
+  $('tb-utilisateurs').innerHTML = utilisateurs.map(u => {
+    const cl = u.classes || [];
+    const admin = u.role === 'admin';
+    return `<tr class="${!admin && !cl.length ? 'sans-classe' : ''}">
+      <td>${esc(u.nom)}${u.id === monId ? ' <small>(vous)</small>' : ''}</td>
+      <td>${esc(u.email)}</td>
+      <td><span class="badge ${admin ? 'oui' : 'gris'}">${esc(LIB_ROLE[u.role] || u.role)}</span></td>
+      <td>${admin ? 'Toutes les classes'
+                  : cl.length ? esc([...cl].sort(triClasses).join(', ')) + ' <small>(' + cl.length + ')</small>'
+                              : '<em>aucune classe attribuée</em>'}</td>
+      <td><button class="secondaire" data-id="${esc(u.id)}">Modifier</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="5">Aucun utilisateur.</td></tr>';
+}
+
+function classesProposees() {
+  return [...new Set([...classes, ...coches])].sort(triClasses);   // y compris une classe attribuée qui n'existe plus
+}
+
+function dessinerGrille() {
+  const f = $('u-filtre').value.trim().toLowerCase();
+  $('u-grille').innerHTML = classesProposees()
+    .filter(c => !f || c.toLowerCase().includes(f))
+    .map(c => `<label><input type="checkbox" data-classe="${esc(c)}" ${coches.has(c) ? 'checked' : ''}> ${esc(c)}</label>`)
+    .join('') || '<em>Aucune classe ne correspond.</em>';
+  $('u-compte').textContent = `(${coches.size} sélectionnée${coches.size > 1 ? 's' : ''} sur ${classesProposees().length})`;
+}
+
+function majAideRole() {
+  const admin = $('u-role').value === 'admin';
+  $('u-aide-role').textContent = admin
+    ? 'Un admin voit et gère toutes les classes : les classes cochées ci-dessous ne s\'appliquent pas.'
+    : 'Un utilisateur (prof) voit et saisit uniquement les élèves des classes qui lui sont attribuées.';
+  $('u-classes-bloc').style.opacity = admin ? '.45' : '1';
+  $('u-classes-bloc').style.pointerEvents = admin ? 'none' : 'auto';
+}
+
+function ouvrirEditeur(id) {
+  const u = utilisateurs.find(x => x.id === id);
+  if (!u) return;
+  editionId = id;
+  $('u-titre').textContent = 'Modifier : ' + u.email;
+  $('u-nom').value = u.nom || '';
+  $('u-role').value = u.role;
+  coches = new Set(u.classes || []);
+  $('u-filtre').value = '';
+  $('u-msg').textContent = '';
+  dessinerGrille();
+  majAideRole();
+  $('u-editeur').hidden = false;
+  $('u-editeur').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function fermerEditeur() {
+  editionId = null;
+  $('u-editeur').hidden = true;
+}
+
+$('tb-utilisateurs').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (b) ouvrirEditeur(b.dataset.id);
+});
+$('u-actualiser').addEventListener('click', chargerUtilisateurs);
+$('u-annuler').addEventListener('click', fermerEditeur);
+$('u-role').addEventListener('change', majAideRole);
+$('u-filtre').addEventListener('input', dessinerGrille);
+$('u-grille').addEventListener('change', e => {
+  const c = e.target.dataset.classe;
+  if (c === undefined) return;
+  if (e.target.checked) coches.add(c); else coches.delete(c);
+  dessinerGrille();
+});
+$('u-tout').addEventListener('click', () => {
+  document.querySelectorAll('#u-grille input[data-classe]').forEach(i => coches.add(i.dataset.classe));
+  dessinerGrille();
+});
+$('u-rien').addEventListener('click', () => {
+  document.querySelectorAll('#u-grille input[data-classe]').forEach(i => coches.delete(i.dataset.classe));
+  dessinerGrille();
+});
+
+$('u-save').addEventListener('click', async () => {
+  const msg = $('u-msg');
+  const idModifie = editionId;
+  const u = utilisateurs.find(x => x.id === idModifie);
+  if (!u) return;
+  const nom = $('u-nom').value.trim();
+  const role = $('u-role').value;
+  if (!nom) { msg.className = 'erreur'; msg.textContent = 'Le nom est obligatoire.'; return; }
+  if (u.id === monId && u.role === 'admin' && role !== 'admin' &&
+      !confirm('Vous allez retirer votre propre rôle admin : vous perdrez l\'accès à cet écran. Continuer ?')) return;
+
+  const { data, error } = await sb.from('profils')
+    .update({ nom, role, classes: [...coches].sort(triClasses) })
+    .eq('id', idModifie).select('id');
+  if (error) {
+    msg.className = 'erreur';
+    msg.textContent = /au moins un admin/i.test(error.message)
+      ? 'Il doit rester au moins un admin : impossible de retirer ce rôle.'
+      : 'Erreur : ' + error.message;
+    return;
+  }
+  if (!data || !data.length) {
+    msg.className = 'erreur';
+    msg.textContent = 'Aucune modification enregistrée (droits insuffisants ?).';
+    return;
+  }
+  fermerEditeur();
+  await chargerUtilisateurs();
+  if (idModifie === monId) await rechargerMonProfil();
+});
+
 // ---------- Temps réel ----------
 function ecouterTempsReel() {
   if (channel) sb.removeChannel(channel);
   channel = sb.channel('live')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'profils' }, payload => {
+      // Mon rôle ou mes classes ont changé : on met la page à jour sans reconnexion
+      if (payload.new && payload.new.id === monId) rechargerMonProfil();
+      if (ecranCourant === 'utilisateurs' && editionId === null) chargerUtilisateurs();
+    })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'absences' }, () => {
       chargerAbsences();
       if (ecranCourant === 'classe') afficherParClasse();
