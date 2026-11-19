@@ -45,23 +45,50 @@
   .grille-classes label { display: flex; align-items: center; gap: 6px; margin: 0; font-size: .88rem; }
   .grille-classes input { width: auto; }
   tr.sans-classe td { background: #fff9e6; }
+  a.lien { color: #1f4e79; cursor: pointer; text-decoration: underline; font-size: .9rem; }
+  .voir { display: flex; align-items: center; gap: 6px; font-size: .85rem; margin: 6px 0 0; }
+  .voir input { width: auto; }
 </style>
 </head>
 <body>
 
 <!-- CONNEXION -->
 <section id="login" class="card">
-  <h2>Connexion</h2>
+  <h2 id="login-titre">Connexion</h2>
   <form id="form-login">
     <label for="email">Email</label>
     <input id="email" type="email" required autocomplete="username">
     <label for="mdp">Mot de passe</label>
     <input id="mdp" type="password" required autocomplete="current-password">
     <p><button type="submit">Se connecter</button></p>
+    <p><a class="lien" id="lien-oubli" href="#">Mot de passe oublié ?</a></p>
     <p id="login-err" class="erreur"></p>
     <p><button type="button" class="secondaire" id="btn-diag">Tester la connexion au serveur</button></p>
     <pre id="diag" hidden style="white-space:pre-wrap;font-size:.8rem;background:#f4f6f8;padding:8px;border-radius:6px;margin:0 0 8px"></pre>
     <p id="cfg-info" style="font-size:.78rem;color:#52606d;margin:0"></p>
+  </form>
+
+  <!-- Mot de passe oublié : envoi du lien de réinitialisation par email -->
+  <form id="form-oubli" hidden>
+    <p class="aide">Saisissez l'adresse email de votre compte : un lien pour choisir un nouveau mot de passe vous sera envoyé.</p>
+    <label for="oubli-email">Email</label>
+    <input id="oubli-email" type="email" required autocomplete="username">
+    <p><button type="submit" id="oubli-btn">Envoyer le lien</button>
+       <button type="button" class="secondaire" id="oubli-retour">Retour</button></p>
+    <p id="oubli-msg" role="status"></p>
+  </form>
+
+  <!-- Nouveau mot de passe (affiché quand on arrive par le lien reçu par email) -->
+  <form id="form-reset" hidden>
+    <p class="aide">Choisissez votre nouveau mot de passe (8 caractères minimum).</p>
+    <label for="reset-mdp">Nouveau mot de passe</label>
+    <input id="reset-mdp" type="password" required minlength="8" autocomplete="new-password">
+    <label for="reset-mdp2">Confirmer le mot de passe</label>
+    <input id="reset-mdp2" type="password" required minlength="8" autocomplete="new-password">
+    <label class="voir"><input type="checkbox" id="reset-voir"> Afficher les mots de passe</label>
+    <p><button type="submit" id="reset-btn">Enregistrer le mot de passe</button>
+       <button type="button" class="secondaire" id="reset-annuler">Annuler</button></p>
+    <p id="reset-msg" role="status"></p>
   </form>
 </section>
 
@@ -77,6 +104,7 @@
       <button data-ecran="eleves" class="admin-only">Élèves</button>
       <button data-ecran="motifs" class="admin-only">Motifs</button>
       <button data-ecran="utilisateurs" class="admin-only">Utilisateurs</button>
+      <button data-ecran="mdp">Mon mot de passe</button>
     </nav>
     <span><span id="qui"></span> <button class="secondaire" id="btn-logout">Déconnexion</button></span>
   </header>
@@ -107,9 +135,30 @@
 
     <!-- ÉCRAN : LISTE EN DIRECT -->
     <section class="ecran card" id="ecran-liste" hidden>
-      <h2>Absences enregistrées <small>(mise à jour en direct, 200 dernières)</small></h2>
-      <label for="filtre-classe">Filtrer par classe</label>
-      <select id="filtre-classe"></select>
+      <h2>Absences enregistrées <small>(mise à jour en direct)</small></h2>
+      <div class="ligne">
+        <div><label for="filtre-classe">Classe</label><select id="filtre-classe"></select></div>
+        <div><label for="fl-periode">Afficher par</label>
+          <select id="fl-periode">
+            <option value="jour">Jour</option>
+            <option value="semaine">Semaine</option>
+            <option value="mois">Mois</option>
+            <option value="tout">Tout (200 dernières)</option>
+          </select></div>
+        <div id="fl-date-bloc"><label for="fl-date">Date</label><input id="fl-date" type="date"></div>
+        <div id="fl-creneau-bloc"><label for="fl-creneau">Créneau</label>
+          <select id="fl-creneau">
+            <option value="">Tous les créneaux</option>
+            <option>M1</option><option>M2</option><option>M3</option><option>M4</option>
+            <option>S1</option><option>S2</option><option>S3</option><option>S4</option>
+          </select></div>
+        <div id="fl-nav" style="flex:0 0 auto">
+          <button type="button" class="secondaire" id="fl-prec" title="Période précédente">◀</button>
+          <button type="button" class="secondaire" id="fl-auj">Aujourd'hui</button>
+          <button type="button" class="secondaire" id="fl-suiv" title="Période suivante">▶</button>
+        </div>
+      </div>
+      <p id="fl-resume" class="aide"></p>
       <div class="scroll">
         <table>
           <thead><tr>
@@ -260,15 +309,43 @@
         </table>
       </div>
     </section>
+
+    <!-- Changer son propre mot de passe (tous les comptes) -->
+    <section class="ecran card" id="ecran-mdp" hidden>
+      <h2>Mon mot de passe</h2>
+      <form id="form-mdp" style="max-width:360px">
+        <label for="mdp-new">Nouveau mot de passe (8 caractères minimum)</label>
+        <input id="mdp-new" type="password" required minlength="8" autocomplete="new-password">
+        <label for="mdp-new2">Confirmer le nouveau mot de passe</label>
+        <input id="mdp-new2" type="password" required minlength="8" autocomplete="new-password">
+        <label class="voir"><input type="checkbox" id="mdp-voir"> Afficher les mots de passe</label>
+        <p><button type="submit">Changer le mot de passe</button></p>
+        <p id="mdp-msg" role="status"></p>
+      </form>
+    </section>
   </main>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 // ====== À REMPLACER (Supabase > Project Settings > API) ======
-const SUPABASE_URL = 'https://cgygfmmcbfkmwpbdswiu.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_Rbqlx4EfIh-dLWnmDGvs0Q_M9GQILrP';   // collez ici votre clé « publishable » (sb_publishable_...), jamais la clé secrète
+let SUPABASE_URL = 'https://cgygfmmcbfkmwpbdswiu.supabase.co';
+let SUPABASE_KEY = 'sb_publishable_Rbqlx4EfIh-dLWnmDGvs0Q_M9GQILrP';   // collez ici votre clé « publishable » (sb_publishable_...), jamais la clé secrète
 // =============================================================
+
+// Nettoyage automatique des fautes de copier-coller : espace, retour à la ligne, caractère invisible,
+// lettre parasite devant la clé, « /rest/v1/ » collé avec l'adresse.
+const CFG_BRUT = { url: SUPABASE_URL.length, cle: SUPABASE_KEY.length };
+SUPABASE_URL = SUPABASE_URL.replace(/[^A-Za-z0-9:\/._\-]/g, '')
+                           .replace(/\/(rest|auth|realtime|storage)\/v1.*$/i, '')
+                           .replace(/\/+$/, '');
+SUPABASE_KEY = SUPABASE_KEY.replace(/[^A-Za-z0-9_.\-]/g, '');
+{
+  const iPub = SUPABASE_KEY.indexOf('sb_publishable_'), iJwt = SUPABASE_KEY.indexOf('eyJ');
+  if (iPub > 0) SUPABASE_KEY = SUPABASE_KEY.slice(iPub);                       // lettres en trop devant la clé
+  else if (iPub < 0 && iJwt > 0 && iJwt < 6) SUPABASE_KEY = SUPABASE_KEY.slice(iJwt);
+}
+const CFG_RETIRES = { url: CFG_BRUT.url - SUPABASE_URL.length, cle: CFG_BRUT.cle - SUPABASE_KEY.length };
 
 // La bibliothèque Supabase vient d'un CDN : si elle n'est pas chargée, on le dit clairement
 if (typeof supabase === 'undefined') {
@@ -276,10 +353,17 @@ if (typeof supabase === 'undefined') {
     "La bibliothèque Supabase n'a pas pu être chargée (connexion internet coupée ou bloqueur de publicités ?). Rechargez la page.";
   throw new Error('supabase-js non chargé');
 }
+// Une clé secrète ne doit JAMAIS servir dans un site public : on refuse de l'utiliser
+if (SUPABASE_KEY.startsWith('sb_secret_')) {
+  document.getElementById('login-err').textContent =
+    "ATTENTION : une clé SECRÈTE (sb_secret_…) est dans index.html. Remplacez-la par la clé « publishable » (sb_publishable_…) " +
+    "et régénérez la clé secrète dans Supabase (Project Settings > API Keys), car elle est visible publiquement.";
+  throw new Error('clé secrète interdite dans le site');
+}
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ---------- Diagnostic de connexion ----------
-const VERSION_SITE = '2026-11-16 v5';
+const VERSION_SITE = '2026-11-18 v8';
 document.getElementById('cfg-info').textContent =
   'Version du site : ' + VERSION_SITE + ' — projet : ' + SUPABASE_URL.replace(/^https?:\/\//, '');
 
@@ -300,9 +384,16 @@ document.getElementById('btn-diag').addEventListener('click', async () => {
   const l = [];
   const afficher = () => { d.hidden = false; d.textContent = l.join('\n'); };
   l.push('Adresse utilisée : ' + SUPABASE_URL);
-  l.push('Clé : ' + SUPABASE_KEY.slice(0, 14) + '… (' + SUPABASE_KEY.length + ' caractères) — ' + typeCle(SUPABASE_KEY));
-  if (/\/(rest|auth)\/v1/.test(SUPABASE_URL) || SUPABASE_URL.endsWith('/'))
-    l.push("PROBLÈME : l'adresse ne doit ni finir par / ni contenir /rest/v1.");
+  // Une clé publique (publishable / anon) n'est pas secrète : on montre le début et la fin pour la comparer à Supabase
+  const publique = SUPABASE_KEY.startsWith('sb_publishable_') || SUPABASE_KEY.startsWith('eyJ');
+  l.push('Clé : ' + (publique ? SUPABASE_KEY.slice(0, 18) + '…' + SUPABASE_KEY.slice(-4) : SUPABASE_KEY.slice(0, 10) + '…') +
+         ' (' + SUPABASE_KEY.length + ' caractères) — ' + typeCle(SUPABASE_KEY));
+  if (CFG_RETIRES.cle > 0)
+    l.push('Correction automatique : ' + CFG_RETIRES.cle + ' caractère(s) parasite(s) (espace, caractère invisible ou lettre en trop) retiré(s) de la clé collée.');
+  if (CFG_RETIRES.url > 0)
+    l.push("Correction automatique de l'adresse : " + CFG_RETIRES.url + ' caractère(s) retiré(s) (espace, « / » final ou « /rest/v1 »).');
+  if (SUPABASE_KEY.startsWith('sb_publishable_') && SUPABASE_KEY.length !== 46)
+    l.push('Attention : une clé publishable fait normalement 46 caractères (celle-ci en fait ' + SUPABASE_KEY.length + ') : recopiez-la depuis Supabase.');
   if (!/^https:\/\/[a-z0-9]{20}\.supabase\.co$/.test(SUPABASE_URL))
     l.push("Attention : l'adresse n'a pas la forme https://xxxxxxxxxxxxxxxxxxxx.supabase.co (20 caractères avant .supabase.co).");
   l.push('Test du serveur en cours…');
@@ -389,12 +480,133 @@ $('form-login').addEventListener('submit', async e => {
     err.textContent =
       m.includes('invalid login') ? 'Email ou mot de passe incorrect (ou compte inexistant).' :
       m.includes('not confirmed') ? "Compte non confirmé : dans Supabase, Authentication > Users, ouvrez l'utilisateur et confirmez-le." :
-      m.includes('api key') || m.includes('apikey') ? 'Clé API invalide : vérifiez SUPABASE_KEY.' :
+      m.includes('secret') ? "Une clé SECRÈTE est utilisée dans le site : remplacez-la par la clé « publishable » (sb_publishable_…) et régénérez la clé secrète dans Supabase." :
+      m.includes('api key') || m.includes('apikey') ? "Clé API refusée par Supabase : cliquez sur « Tester la connexion au serveur » ci-dessous pour voir pourquoi." :
       m.includes('fetch') ? "Connexion impossible au serveur (adresse utilisée : " + SUPABASE_URL + "). Cliquez sur « Tester la connexion au serveur » ci-dessous." :
       'Erreur : ' + error.message;
     return;
   }
   demarrer();
+});
+
+// ---------- Mot de passe oublié / réinitialisation / changement ----------
+const TITRES = { login: 'Connexion', oubli: 'Mot de passe oublié', reset: 'Nouveau mot de passe' };
+function montrerPanneau(nom) {
+  $('login').hidden = false;
+  $('app').hidden = true;
+  $('form-login').hidden = nom !== 'login';
+  $('form-oubli').hidden = nom !== 'oubli';
+  $('form-reset').hidden = nom !== 'reset';
+  $('login-titre').textContent = TITRES[nom];
+}
+let modeRecuperation = false;
+
+// Adresse de retour du lien reçu par email : la page elle-même (doit figurer dans Supabase > Authentication > URL Configuration)
+const URL_RETOUR = location.origin + location.pathname.replace(/index\.html$/, '');
+
+function traduireErreurMdp(error) {
+  const m = (error.message || '').toLowerCase();
+  return m.includes('different from the old') || m.includes('same password') ? "Le nouveau mot de passe doit être différent de l'ancien." :
+    m.includes('at least') || m.includes('weak') || m.includes('too short') ? "Mot de passe refusé par Supabase (trop court ou trop simple) : choisissez-en un plus long et plus varié." :
+    m.includes('reauth') ? "Pour des raisons de sécurité, déconnectez-vous puis utilisez « Mot de passe oublié ? »." :
+    m.includes('session') || m.includes('jwt') || m.includes('not authenticated') ? "Session expirée : demandez un nouveau lien avec « Mot de passe oublié ? »." :
+    m.includes('rate') || m.includes('too many') ? "Trop de tentatives : patientez une minute puis recommencez." :
+    'Erreur : ' + error.message;
+}
+function verifierNouveauMdp(a, b) {
+  if (a.length < 8) return 'Le mot de passe doit contenir au moins 8 caractères.';
+  if (a !== b) return 'Les deux mots de passe ne sont pas identiques.';
+  return '';
+}
+function basculerVoir(caseId, ...champs) {
+  $(caseId).addEventListener('change', e => champs.forEach(c => $(c).type = e.target.checked ? 'text' : 'password'));
+}
+basculerVoir('reset-voir', 'reset-mdp', 'reset-mdp2');
+basculerVoir('mdp-voir', 'mdp-new', 'mdp-new2');
+
+$('lien-oubli').addEventListener('click', e => {
+  e.preventDefault();
+  $('oubli-email').value = $('email').value.trim();
+  $('oubli-msg').textContent = '';
+  montrerPanneau('oubli');
+});
+$('oubli-retour').addEventListener('click', () => montrerPanneau('login'));
+
+$('form-oubli').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msg = $('oubli-msg'), btn = $('oubli-btn');
+  msg.className = ''; msg.textContent = '';
+  if (SUPABASE_KEY.includes('VOTRE_CLE')) { msg.className = 'erreur'; msg.textContent = 'Configuration manquante dans index.html.'; return; }
+  btn.disabled = true;
+  try {
+    const { error } = await sb.auth.resetPasswordForEmail($('oubli-email').value.trim(), { redirectTo: URL_RETOUR });
+    if (error) {
+      const m = (error.message || '').toLowerCase();
+      msg.className = 'erreur';
+      msg.textContent =
+        m.includes('rate') || m.includes('seconds') || m.includes('too many') ? "Trop de demandes : patientez une minute (ou plus) avant de recommencer." :
+        m.includes('sending') || m.includes('not authorized') || m.includes('smtp') ? "L'email n'a pas pu être envoyé : le service d'envoi d'emails de Supabase n'est pas configuré (voir Authentication > SMTP). Contactez l'administrateur." :
+        'Erreur : ' + error.message;
+    } else {
+      msg.className = 'info';
+      msg.textContent = "Si cette adresse correspond à un compte, un email vient d'être envoyé avec un lien pour choisir un nouveau mot de passe. Pensez à vérifier les courriers indésirables.";
+    }
+  } catch (ex) {
+    msg.className = 'erreur';
+    msg.textContent = 'Connexion impossible au serveur : ' + ex.message;
+  }
+  setTimeout(() => { btn.disabled = false; }, 5000);
+});
+
+// Quitte le mode « récupération » (nettoie l'adresse pour ne pas la rejouer)
+function sortirRecuperation() {
+  modeRecuperation = false;
+  try { history.replaceState(null, '', location.pathname); } catch (_) {}
+}
+
+$('form-reset').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msg = $('reset-msg'), a = $('reset-mdp').value, b = $('reset-mdp2').value;
+  msg.className = 'erreur'; msg.textContent = '';
+  const pb = verifierNouveauMdp(a, b);
+  if (pb) { msg.textContent = pb; return; }
+  $('reset-btn').disabled = true;
+  try {
+    const { error } = await sb.auth.updateUser({ password: a });
+    if (error) { msg.textContent = traduireErreurMdp(error); return; }
+  } catch (ex) { msg.textContent = 'Connexion impossible au serveur : ' + ex.message; return; }
+  finally { $('reset-btn').disabled = false; }
+  $('reset-mdp').value = $('reset-mdp2').value = '';
+  sortirRecuperation();
+  await demarrer();
+  if (!$('app').hidden) alert('Mot de passe modifié. Vous êtes connecté.');
+});
+$('reset-annuler').addEventListener('click', async () => {
+  sortirRecuperation();
+  await sb.auth.signOut();
+  montrerPanneau('login');
+});
+
+$('form-mdp').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msg = $('mdp-msg'), a = $('mdp-new').value, b = $('mdp-new2').value;
+  msg.className = 'erreur'; msg.textContent = '';
+  const pb = verifierNouveauMdp(a, b);
+  if (pb) { msg.textContent = pb; return; }
+  const { error } = await sb.auth.updateUser({ password: a });
+  if (error) { msg.textContent = traduireErreurMdp(error); return; }
+  $('mdp-new').value = $('mdp-new2').value = '';
+  msg.className = 'info';
+  msg.textContent = 'Mot de passe modifié.';
+});
+
+// Arrivée par le lien de l'email : Supabase émet l'événement PASSWORD_RECOVERY
+sb.auth.onAuthStateChange(event => {
+  if (event === 'PASSWORD_RECOVERY') {
+    modeRecuperation = true;
+    $('reset-msg').textContent = '';
+    montrerPanneau('reset');
+  }
 });
 
 $('btn-logout').addEventListener('click', async () => {
@@ -415,8 +627,22 @@ function effacerSignalement() { erreursData.clear(); $('bandeau').hidden = true;
 
 async function init() {
   try {
+    const brut = location.hash + '&' + location.search;
+    // lien expiré ou déjà utilisé
+    if (/error_code=otp_expired|error=access_denied/.test(brut) || /error_description=/.test(brut)) {
+      try { history.replaceState(null, '', location.pathname); } catch (_) {}
+      montrerPanneau('login');
+      $('login-err').textContent = "Ce lien de réinitialisation a expiré ou a déjà été utilisé. Cliquez sur « Mot de passe oublié ? » pour en recevoir un nouveau.";
+      return;
+    }
+    const lienRecup = /type=recovery/.test(brut) || /[?&]code=/.test(location.search);
     const { data: { session } } = await sb.auth.getSession();
-    if (session) await demarrer();
+    if (lienRecup) {
+      // PASSWORD_RECOVERY affichera le formulaire ; au cas où l'événement serait déjà passé :
+      if (session) { modeRecuperation = true; montrerPanneau('reset'); }
+      return;
+    }
+    if (session && !modeRecuperation) await demarrer();
   } catch (ex) {
     $('login-err').textContent = 'Erreur au démarrage : ' + ex.message;
   }
@@ -445,8 +671,7 @@ async function demarrer() {
   } catch (ex) {
     err.textContent = ex.message;
     await sb.auth.signOut();
-    $('login').hidden = false;
-    $('app').hidden = true;
+    montrerPanneau('login');
     return;
   }
 
@@ -457,6 +682,7 @@ async function demarrer() {
   appliquerProfil();
 
   $('date').value = aujourdhui();
+  $('fl-date').value = aujourdhui();
   $('pc-du').value = $('st-du').value = ilYaJours(30);
   $('pc-au').value = $('st-au').value = aujourdhui();
 
@@ -501,6 +727,7 @@ function showEcran(nom) {
   if (nom === 'eleves') afficherTableEleves();
   if (nom === 'motifs') afficherMotifs();
   if (nom === 'utilisateurs') chargerUtilisateurs();
+  if (nom === 'mdp') { $('mdp-msg').textContent = ''; }
 }
 $('nav').addEventListener('click', e => {
   const b = e.target.closest('button');
@@ -615,21 +842,69 @@ $('btn-save').addEventListener('click', async () => {
 });
 
 // ---------- Écran : liste en direct ----------
+// Période choisie : jour, semaine (lundi → dimanche) ou mois autour de la date de référence
+const isoJour = t => new Date(t).toISOString().slice(0, 10);
+const JOURS_FR = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+const fmtJour = iso => iso.split('-').reverse().join('/');
+function plagePeriode() {
+  const mode = $('fl-periode').value, d = $('fl-date').value;
+  if (mode === 'tout' || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+  const [y, m, j] = d.split('-').map(Number), t0 = Date.UTC(y, m - 1, j);
+  if (mode === 'jour') return { du: d, au: d };
+  if (mode === 'semaine') {
+    const dow = (new Date(t0).getUTCDay() + 6) % 7;            // 0 = lundi
+    return { du: isoJour(t0 - dow * 864e5), au: isoJour(t0 + (6 - dow) * 864e5) };
+  }
+  return { du: isoJour(Date.UTC(y, m - 1, 1)), au: isoJour(Date.UTC(y, m, 0)) };
+}
+function decalerPeriode(sens) {
+  const mode = $('fl-periode').value, d = $('fl-date').value || aujourdhui();
+  const [y, m, j] = d.split('-').map(Number);
+  $('fl-date').value =
+    mode === 'mois' ? isoJour(Date.UTC(y, m - 1 + sens, 1)) :
+    isoJour(Date.UTC(y, m - 1, j) + sens * (mode === 'semaine' ? 7 : 1) * 864e5);
+  chargerAbsences();
+}
+function majControlesFiltre() {
+  const mode = $('fl-periode').value;
+  $('fl-date-bloc').hidden = $('fl-nav').hidden = mode === 'tout';
+  $('fl-creneau-bloc').hidden = mode !== 'jour';              // le créneau n'a de sens que pour un jour
+}
+
 async function chargerAbsences() {
-  const { data, error } = await sb.from('absences')
-    .select('id, date, creneau, type, motif, justifiee, saisi_par, eleves(nom, prenom, classe), profils(nom)')
-    .order('date', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(200);
-  if (error) signaler('Absences : ' + error.message);
-  absences = data || [];
+  majControlesFiltre();
+  const plage = plagePeriode(), creneau = $('fl-creneau-bloc').hidden ? '' : $('fl-creneau').value;
+  const construire = () => {
+    let q = sb.from('absences')
+      .select('id, date, creneau, type, motif, justifiee, saisi_par, eleves(nom, prenom, classe), profils(nom)')
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (plage) q = q.gte('date', plage.du).lte('date', plage.au);
+    if (creneau) q = q.eq('creneau', creneau);
+    return q;
+  };
+  if (plage) {
+    absences = await fetchAll(construire);                    // toute la période, par paquets de 1000
+  } else {
+    const { data, error } = await construire().limit(200);
+    if (error) signaler('Absences : ' + error.message);
+    absences = data || [];
+  }
   afficherAbsences();
 }
 
 function afficherAbsences() {
   const filtre = $('filtre-classe').value;
-  $('liste-absences').innerHTML = absences
-    .filter(a => !filtre || (a.eleves && a.eleves.classe === filtre))
+  const visibles = absences.filter(a => !filtre || (a.eleves && a.eleves.classe === filtre));
+  const plage = plagePeriode(), cr = $('fl-creneau-bloc').hidden ? '' : $('fl-creneau').value;
+  const mode = $('fl-periode').value;
+  const quand = !plage ? 'parmi les 200 dernières saisies' :
+    mode === 'jour' ? 'le ' + JOURS_FR[new Date($('fl-date').value + 'T00:00:00Z').getUTCDay()] + ' ' + fmtJour(plage.du) :
+    'du ' + fmtJour(plage.du) + ' au ' + fmtJour(plage.au);
+  const nbAbs = visibles.filter(a => a.type === 'absence').length;
+  $('fl-resume').textContent = `${visibles.length} enregistrement(s) ${quand}` + (cr ? ` · créneau ${cr}` : '') +
+    (filtre ? ` · classe ${filtre}` : '') + ` — ${nbAbs} absence(s), ${visibles.length - nbAbs} retard(s)`;
+  $('liste-absences').innerHTML = visibles
     .map(a => {
       const peutModifier = estAdmin() || a.saisi_par === monId;
       const motifCell = peutModifier
@@ -654,6 +929,10 @@ function afficherAbsences() {
     }).join('');
 }
 $('filtre-classe').addEventListener('change', afficherAbsences);
+['fl-periode', 'fl-date', 'fl-creneau'].forEach(id => $(id).addEventListener('change', chargerAbsences));
+$('fl-prec').addEventListener('click', () => decalerPeriode(-1));
+$('fl-suiv').addEventListener('click', () => decalerPeriode(1));
+$('fl-auj').addEventListener('click', () => { $('fl-date').value = aujourdhui(); chargerAbsences(); });
 
 $('liste-absences').addEventListener('click', async e => {
   const b = e.target.closest('button');
